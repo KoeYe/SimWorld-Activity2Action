@@ -1,0 +1,26 @@
+[
+{
+    "type": "function",
+    "function": {
+        "name": "navigate",
+        "description": "Navigate the robot to a specified location",
+        "parameters": {
+            "type": "object",
+            "properties": {
+                "waypoint": {
+                    "type": "object",
+                    "properties": {
+                        "x": {"type": "number", "description": "X coordinate of the waypoint"},
+                        "y": {"type": "number", "description": "Y coordinate of the waypoint"}
+                    },
+                    "required": ["x", "y"],
+                    "additionalProperties": false
+                }
+            },
+            "required": ["waypoint"],
+            "additionalProperties": false
+        },
+        "strict": true
+    }
+}
+]
