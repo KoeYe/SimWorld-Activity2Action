@@ -7,13 +7,17 @@ import io
 import json
 import random
 # from .base import ActionQueue, Action
+from A2A.ActionSpace import ActionSpace, Action
 from llm.openai_model import UEOpenAIModel
-from utils.Types import Vector
+from utils.Types import Vector, Road
 from Config import Config
 import math
 import time
+import os
+from threading import Lock
 
-from Prompt.prompt import SYSTEM_PROMPT
+from Prompt.prompt import SYSTEM_PROMPT, USER_PROMPT
+from A2A.Map import Map, Node, Edge
 
 FUNCTIONS = json.load(open("functions.json", "r"))
 
@@ -22,7 +26,7 @@ class A2Agent(object):
     def __init__(self,
                 model: UEOpenAIModel,
                 name: str,
-                waypoint: Vector,
+                # waypoint: Vector,
                 unrealcv_client=None,
                 temperature=1.5,
                 max_history_step=5,
@@ -32,6 +36,7 @@ class A2Agent(object):
                 action_buffer=None,
                 rule_based=True,
                 ):
+        self.lock = Lock()
         self.name = name
         self.model = model
         self.functions = FUNCTIONS
@@ -42,18 +47,40 @@ class A2Agent(object):
         self.action_history = ""
         self.camera_id = camera_id
         self.observation_viewmode = observation_viewmode
+        self.map = Map()
         self.action_buffer = action_buffer
-        self.next_waypoint = waypoint
+        self.next_waypoint = None # Vector
         self.position = None
         self.direction = None  # Assuming the initial direction is facing 'up' in the 2D plane
         self.rule_based = rule_based
         self.dt = dt
         self.update_position_and_direction()
+        self.map_init()
 
+
+    def parse(self):
+        user_prompt = USER_PROMPT.format(map=self.map, position=self.position)
         
-    def navigate(self, waypoint: List[int]):
+        response = self.model.generate(
+            system_prompt=self.system_prompt,
+            user_prompt=user_prompt,
+            action_history=self.action_history,
+            temperature=self.temperature
+        )
+        print(f"Response: {response}")
+        response_obj = ActionSpace.from_json(response)
+
+        actions = response_obj.actions
+        self.next_waypoint = Vector(response_obj.waypoints.x, response_obj.waypoints.y)
+
+        for action in actions:
+            if action == Action.Navigate:
+                self.navigate()
+        
+    def navigate(self):
         """Navigate to the waypoint"""
-        self.next_waypoint = Vector(int(waypoint[0]), int(waypoint[1]))
+        # self.next_waypoint = Vector(int(waypoint[0]), int(waypoint[1]))
+        print(f"Next waypoint: {self.next_waypoint}")
         if self.rule_based:
             self.navigate_rule_based()
         else:
@@ -66,8 +93,7 @@ class A2Agent(object):
                 angle, turn_direction = self.get_angle_and_direction()
                 self.unrealcv_client.d_rotate(self.name, angle, turn_direction)
             self.unrealcv_client.d_step_forward(self.name)
-            # time.sleep(self.dt)
-        # self.unrealcv_client.d_stop(self.name)
+            self.update_position_and_direction()
             
     def navigate_vision_based(self):
         # while not self.walk_arrive_at_waypoint():
@@ -97,71 +123,50 @@ class A2Agent(object):
         to_waypoint = self.next_waypoint - self.position
         angle = math.degrees(math.acos(np.clip(self.direction.dot(to_waypoint.normalize()), -1, 1)))
         return angle < 5
-
-    def _process_function_call(self, tool_call):
-        """Process the function call"""
-        try:
-            if hasattr(tool_call, 'function'):
-                function_name = tool_call.function.name
-                arguments = json.loads(tool_call.function.arguments)
-                if function_name == "navigate":
-                    [x, y] = [arguments.get("x", 0), arguments.get("y", 0)]
-                    self.navigate([x, y])
-        except Exception as e:
-            print(f"Error processing function call: {e}")
-            return None
-        
-    def parse(self, user_prompt: str):
-        self.action_history = self.action_buffer.get_action_history(self.name)
-        result = self.model.function_calling(
-            system_prompt= self.system_prompt,
-            user_prompt=user_prompt, # plan given by the user is integrated into this prompt
-            functions=self.functions, # 给大模型选择function
-            action_history=self.action_history,
-            temperature=self.temperature
-        )[0][0]
-
-        if result.type == "function":
-            self._process_function_call(result)
-            return 'success'
-        else:
-            print("No function call found in the result")
-            return None
         
     def update_position_and_direction(self):
-        position = self.client.d_get_location(self.name)[:-1] # Ignore Z coordinate
-        direction = self.client.d_get_orientation(self.name)[1] # Yaw
-        self.position = Vector(position[0], position[1])
-        self.direction = direction
-        return position, direction
+        with self.lock:
+            position = self.client.d_get_location(self.name)[:-1] # Ignore Z coordinate
+            yaw = self.client.d_get_rotation(self.name)[1] # Yaw
+            self.position = Vector(position[0], position[1])
+            self.direction = Vector(math.cos(math.radians(yaw)), math.sin(math.radians(yaw))).normalize()
+        # return position, direction
+    
+    def map_init(self):
+        with open('roads.json', 'r') as f:
+            roads_data = json.load(f)
 
-    # def describe(self, observation: list[np.ndarray], system_prompt: str = None, user_prompt: str = None):
-    #     default_system_prompt = """
-    #         You are a robot named <NAME> in a city.
-    #         You have the observation of the environment, which is a list of different types of images of the environment,
-    #         including lit, normal, depth, and object_mask images.
-    #         Your goal is describe the environment according to your observations in detail.
-    #         Your description should include the following information:
-    #         - Whether there are any obstacles or objects in the environment.
-    #         - The color of the object, whether it is object or obstacle.
-    #         - The relative direction of the objects to the robot.
-    #         - The relative distance between the robot and the objects.
-    #         - Does object right at the middle of the robot's view field.
-    #         - The suggest direction for next step to achieve the goal.
-    #     """
-    #     default_user_prompt = """
-    #         According to the current observations images, describe the environment in detail.
-    #     """
-    #     system_prompt = system_prompt if system_prompt else default_system_prompt
-    #     user_prompt = user_prompt if user_prompt else default_user_prompt
-    #     return self.model.generate(
-    #         system_prompt=system_prompt,
-    #         user_prompt=user_prompt,
-    #         images=observation,
-    #         functions=self.functions,
-    #         action_history=self.action_history,
-    #         temperature=self.temperature
-    #     )
+        roads = roads_data['roads']
+
+        road_objects = []
+        for road in roads:
+            start = Vector(road['start']['x']*100, road['start']['y']*100)
+            end = Vector(road['end']['x']*100, road['end']['y']*100)
+            road_objects.append(Road(start, end))
+
+        # Initialize the map
+        for road in road_objects:
+            normal_vector = Vector(road.direction.y, -road.direction.x)
+            point1 = road.start - normal_vector * (Config.SIDEWALK_OFFSET) + road.direction * Config.SIDEWALK_OFFSET
+            point2 = road.end - normal_vector * (Config.SIDEWALK_OFFSET) - road.direction * Config.SIDEWALK_OFFSET
+
+            point3 = road.end + normal_vector * (Config.SIDEWALK_OFFSET) - road.direction * Config.SIDEWALK_OFFSET
+            point4 = road.start + normal_vector * (Config.SIDEWALK_OFFSET) + road.direction * Config.SIDEWALK_OFFSET
+
+            node1 = Node(point1, "intersection")
+            node2 = Node(point2, "intersection")
+            node3 = Node(point3, "intersection")
+            node4 = Node(point4, "intersection")
+
+            self.map.add_node(node1)
+            self.map.add_node(node2)
+            self.map.add_node(node3)
+            self.map.add_node(node4)
+
+            self.map.add_edge(Edge(node1, node2))
+            self.map.add_edge(Edge(node3, node4))
+            self.map.add_edge(Edge(node1, node4))
+            self.map.add_edge(Edge(node2, node3))
 
 
     def reset(self):

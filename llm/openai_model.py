@@ -6,6 +6,7 @@ from PIL import Image
 import time
 from typing import Optional, Union
 import json
+from A2A.ActionSpace import ActionSpace
 
 # from Base.ActionSpace import ActionSpace
 # from Base.ReasoningSpace import ReasoningSpace
@@ -256,13 +257,14 @@ class UEOpenAIModel(OpenAIModel):
                         temperature=temperature,
                         top_p=top_p,
                         n=num_return_sequences,
-                        # response_format=ActionSpace,
+                        response_format=ActionSpace,
                         **kwargs,
                     )
-                    return GenerateOutput(
-                        text=[choice.message.content for choice in response.choices],
-                        log_prob=None,
-                    )
+                    # return GenerateOutput(
+                    #     text=[choice.message.content for choice in response.choices],
+                    #     log_prob=None,
+                    # )
+                    return response.choices[0].message.content
                 else:
                     response = self.client.chat.completions.create(
                         model=self.model,
@@ -272,7 +274,7 @@ class UEOpenAIModel(OpenAIModel):
                         top_p=top_p,
                         n=num_return_sequences,
                         logprobs=0,
-                        # response_format=ActionSpace,
+                        response_format=ActionSpace,
                         **kwargs,
                     )
                     return GenerateOutput(
