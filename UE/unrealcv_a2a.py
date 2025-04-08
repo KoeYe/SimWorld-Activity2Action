@@ -1,11 +1,11 @@
-from Communicator.unrealcv_basic import UnrealCV
+from UE.unrealcv_basic import UnrealCV
 import threading
 
 import numpy as np
 
 class UnrealCvA2A(UnrealCV):
-    def __init__(self, ip, port, resolution):
-        super().__init__(ip, port, resolution)
+    def __init__(self, port, ip, resolution):
+        super().__init__(port, ip, resolution)
         self.lock = threading.Lock()
 
     def d_move_forward(self, object_name):
