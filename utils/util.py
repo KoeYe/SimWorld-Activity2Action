@@ -16,7 +16,7 @@ def visualize_map(map_obj: Map, save_path: Optional[str] = None):
     
     参数:
         map_obj: Map对象
-        save_path: 可选，保存图片的路径。如果为None则显示图片
+        save_path: 可选, 保存图片的路径。如果为None则显示图片
     """
     # 创建新的图形
     plt.figure(figsize=(12, 8))

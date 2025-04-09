@@ -16,6 +16,8 @@ import time
 import os
 from threading import Lock
 
+import logging
+
 from Prompt.prompt import SYSTEM_PROMPT, USER_PROMPT
 from A2A.Map import Map, Node, Edge
 
@@ -28,7 +30,7 @@ class A2Agent(object):
                 name: str,
                 # waypoint: Vector,
                 unrealcv_client=None,
-                temperature=1.5,
+                temperature=1.0,
                 max_history_step=5,
                 camera_id=1,
                 dt=1,
@@ -40,11 +42,11 @@ class A2Agent(object):
         self.name = name
         self.model = model
         self.functions = FUNCTIONS
-        self.client = unrealcv_client # unrealcv_delivery
+        self.unrealcv_client = unrealcv_client # unrealcv_delivery
         self.system_prompt = SYSTEM_PROMPT.replace("<NAME>", name)
         self.temperature = temperature
         self.max_history_step = max_history_step
-        self.action_history = ""
+        # self.action_history = ""
         self.camera_id = camera_id
         self.observation_viewmode = observation_viewmode
         self.map = Map()
@@ -56,15 +58,54 @@ class A2Agent(object):
         self.dt = dt
         self.update_position_and_direction()
         self.map_init()
+        self.init_logger()
 
+    def init_logger(self):
+        # Create a logger object
+        self.logger = logging.getLogger(__name__)
+        self.logger.setLevel(logging.INFO)
+
+        # Create a file handler
+        log_file_path = os.path.join("logs", f"{self.name}.log")
+        file_handler = logging.FileHandler(log_file_path)
+        file_handler.setLevel(logging.INFO)
+
+        # Create a console handler
+        console_handler = logging.StreamHandler()
+        console_handler.setLevel(logging.INFO)
+
+        # Create a formatter and set it for both handlers
+        formatter = logging.Formatter('%(asctime)s - %(name)s - %(levelname)s - %(message)s')
+        file_handler.setFormatter(formatter)
+        console_handler.setFormatter(formatter)
+
+        # Add the handlers to the logger
+        self.logger.addHandler(file_handler)
+        self.logger.addHandler(console_handler)
+
+    def get_possible_next_waypoints(self):
+        """
+        Get the possible next waypoints from the current position
+        Returns: A list of possible next waypoints (List[Vector])
+        """
+        current_node = None
+        min_distance = float('inf')
+        for node in self.map.nodes:
+            distance = self.position.distance(node.position)
+            if distance < min_distance:
+                min_distance = distance
+                current_node = node
+        return self.map.get_adjacent_points(current_node)
 
     def parse(self):
-        user_prompt = USER_PROMPT.format(map=self.map, position=self.position)
+        test_point = self.get_possible_next_waypoints()[0]
+        self.logger.info(f"possible next waypoint:{test_point}")
+        user_prompt = USER_PROMPT.format(map=self.map, position=self.position, waypoint=test_point)
         
         response = self.model.generate(
             system_prompt=self.system_prompt,
             user_prompt=user_prompt,
-            action_history=self.action_history,
+            # action_history=self.action_history,
             temperature=self.temperature
         )
         print(f"Response: {response}")
@@ -88,16 +129,20 @@ class A2Agent(object):
         self.update_position_and_direction()
         
     def navigate_rule_based(self):
+        self.logger.info(f"Current position: {self.position}, Next waypoint: {self.next_waypoint}, Direction: {self.direction}")
         while not self.walk_arrive_at_waypoint():
             while not self.align_direction():
                 angle, turn_direction = self.get_angle_and_direction()
+                self.logger.info(f"Angle: {angle}, Turn direction: {turn_direction}")
                 self.unrealcv_client.d_rotate(self.name, angle, turn_direction)
+                self.update_position_and_direction()
+            self.logger.info(f"Walking to waypoint: {self.next_waypoint}")
             self.unrealcv_client.d_step_forward(self.name)
             self.update_position_and_direction()
             
     def navigate_vision_based(self):
         # while not self.walk_arrive_at_waypoint():
-        #     image = self.client.get_observation(self.camera_id, self.observation_viewmode)
+        #     image = self.unrealcv_client.get_observation(self.camera_id, self.observation_viewmode)
         #     function_call = self.model.function_calling(self.system_prompt, self.user_prompt, images=image, functions=self.functions, action_history=self.action_history, temperature=self.temperature)
         pass
 
@@ -120,14 +165,16 @@ class A2Agent(object):
             return angle, turn_direction
         
     def align_direction(self):
+        self.logger.info("Aligning direction")
         to_waypoint = self.next_waypoint - self.position
         angle = math.degrees(math.acos(np.clip(self.direction.dot(to_waypoint.normalize()), -1, 1)))
+        self.logger.info(f"Angle to waypoint: {angle}")
         return angle < 5
         
     def update_position_and_direction(self):
         with self.lock:
-            position = self.client.d_get_location(self.name)[:-1] # Ignore Z coordinate
-            yaw = self.client.d_get_rotation(self.name)[1] # Yaw
+            position = self.unrealcv_client.d_get_location(self.name)[:-1] # Ignore Z coordinate
+            yaw = self.unrealcv_client.d_get_rotation(self.name)[1] # Yaw
             self.position = Vector(position[0], position[1])
             self.direction = Vector(math.cos(math.radians(yaw)), math.sin(math.radians(yaw))).normalize()
         # return position, direction
@@ -170,4 +217,4 @@ class A2Agent(object):
 
 
     def reset(self):
-        self.client.enable_controller(self.name, True)
+        self.unrealcv_client.enable_controller(self.name, True)

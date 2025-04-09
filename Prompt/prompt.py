@@ -10,5 +10,5 @@ You are now at {position} in a city, where the unit is cm. And you have a map of
 You are given a plan from the user, you should parse the plan into a list of actions and a waypoint.
 Do not execute two actions in a row.
 The plan is:
-Go to waypoint (4,7).
+Go to waypoint {waypoint}.
 """
