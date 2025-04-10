@@ -49,6 +49,14 @@ class UnrealCvA2A(UnrealCV):
                 print(f"Error message: {str(e)}")
                 print(f"Error traceback:")
                 print('res:', res)
+
+    # def delivery_man_pick_up(self, delivery_man_id, object_name):
+    #      self.d_pick_up(self.get_delivery_man_name(delivery_man_id), object_name)
+
+    def d_pick_up(self, d_name, object_name):
+        with self.lock:
+            cmd = f'vbp {d_name} PickUp {object_name}'
+            self.client.request(cmd)
                 
     def d_get_rotation(self, object_name):
         with self.lock:

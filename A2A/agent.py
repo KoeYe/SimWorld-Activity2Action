@@ -38,6 +38,7 @@ class A2Agent(object):
                 action_buffer=None,
                 rule_based=True,
                 ):
+
         self.lock = Lock()
         self.name = name
         self.model = model
@@ -51,14 +52,14 @@ class A2Agent(object):
         self.observation_viewmode = observation_viewmode
         self.map = Map()
         self.action_buffer = action_buffer
-        self.next_waypoint = None # Vector
+        self.next_waypoints = [] # List of Vector
         self.position = None
         self.direction = None  # Assuming the initial direction is facing 'up' in the 2D plane
         self.rule_based = rule_based
         self.dt = dt
+        self.init_logger()
         self.update_position_and_direction()
         self.map_init()
-        self.init_logger()
 
     def init_logger(self):
         # Create a logger object
@@ -98,9 +99,9 @@ class A2Agent(object):
         return self.map.get_adjacent_points(current_node)
 
     def parse(self):
-        test_point = self.get_possible_next_waypoints()[0]
-        self.logger.info(f"possible next waypoint:{test_point}")
-        user_prompt = USER_PROMPT.format(map=self.map, position=self.position, waypoint=test_point)
+        # test_point = self.get_possible_next_waypoints()[0]
+        # self.logger.info(f"possible next waypoint:{test_point}")
+        user_prompt = USER_PROMPT.format(map=self.map, position=self.position)
         
         response = self.model.generate(
             system_prompt=self.system_prompt,
@@ -112,31 +113,34 @@ class A2Agent(object):
         response_obj = ActionSpace.from_json(response)
 
         actions = response_obj.actions
-        self.next_waypoint = Vector(response_obj.waypoints.x, response_obj.waypoints.y)
+        wayoints = [Vector(waypoint.x, waypoint.y) for waypoint in response_obj.waypoints]
+        # for waypoint in wayoints:
+        #     self.next_waypoints.append(Vector(waypoint.x, waypoint.y))
+        # self.next_waypoint = Vector(response_obj.waypoints.x, response_obj.waypoints.y)
 
-        for action in actions:
+        for action, w in zip(actions, wayoints):
             if action == Action.Navigate:
-                self.navigate()
+                self.navigate(w)
         
-    def navigate(self):
+    def navigate(self, waypoint: Vector):
         """Navigate to the waypoint"""
         # self.next_waypoint = Vector(int(waypoint[0]), int(waypoint[1]))
-        print(f"Next waypoint: {self.next_waypoint}")
+        print(f"Next waypoint: {waypoint}")
         if self.rule_based:
-            self.navigate_rule_based()
+            self.navigate_rule_based(waypoint)
         else:
             self.navigate_vision_based()
         self.update_position_and_direction()
         
-    def navigate_rule_based(self):
-        self.logger.info(f"Current position: {self.position}, Next waypoint: {self.next_waypoint}, Direction: {self.direction}")
-        while not self.walk_arrive_at_waypoint():
-            while not self.align_direction():
-                angle, turn_direction = self.get_angle_and_direction()
+    def navigate_rule_based(self, waypoint: Vector):
+        self.logger.info(f"Current position: {self.position}, Next waypoint: {waypoint}, Direction: {self.direction}")
+        while not self.walk_arrive_at_waypoint(waypoint):
+            while not self.align_direction(waypoint):
+                angle, turn_direction = self.get_angle_and_direction(waypoint)
                 self.logger.info(f"Angle: {angle}, Turn direction: {turn_direction}")
                 self.unrealcv_client.d_rotate(self.name, angle, turn_direction)
                 self.update_position_and_direction()
-            self.logger.info(f"Walking to waypoint: {self.next_waypoint}")
+            self.logger.info(f"Walking to waypoint: {waypoint}")
             self.unrealcv_client.d_step_forward(self.name)
             self.update_position_and_direction()
             
@@ -146,13 +150,14 @@ class A2Agent(object):
         #     function_call = self.model.function_calling(self.system_prompt, self.user_prompt, images=image, functions=self.functions, action_history=self.action_history, temperature=self.temperature)
         pass
 
-    def walk_arrive_at_waypoint(self):
-        if self.position.distance(self.next_waypoint) < Config.WALK_ARRIVE_WAYPOINT_DISTANCE:
+    def walk_arrive_at_waypoint(self, waypoint: Vector):
+        if self.position.distance(waypoint) < Config.WALK_ARRIVE_WAYPOINT_DISTANCE:
+            self.logger.info(f"Arrived at waypoint: {waypoint}")
             return True
         return False
     
-    def get_angle_and_direction(self):
-        to_waypoint = self.next_waypoint - self.position
+    def get_angle_and_direction(self, waypoint: Vector):
+        to_waypoint = waypoint - self.position
 
         angle = math.degrees(math.acos(np.clip(self.direction.dot(to_waypoint.normalize()), -1, 1)))
 
@@ -164,9 +169,9 @@ class A2Agent(object):
         else:
             return angle, turn_direction
         
-    def align_direction(self):
+    def align_direction(self, waypoint: Vector):
         self.logger.info("Aligning direction")
-        to_waypoint = self.next_waypoint - self.position
+        to_waypoint = waypoint - self.position
         angle = math.degrees(math.acos(np.clip(self.direction.dot(to_waypoint.normalize()), -1, 1)))
         self.logger.info(f"Angle to waypoint: {angle}")
         return angle < 5
@@ -176,6 +181,7 @@ class A2Agent(object):
             position = self.unrealcv_client.d_get_location(self.name)[:-1] # Ignore Z coordinate
             yaw = self.unrealcv_client.d_get_rotation(self.name)[1] # Yaw
             self.position = Vector(position[0], position[1])
+            self.logger.info(f"Current position: {self.position}")
             self.direction = Vector(math.cos(math.radians(yaw)), math.sin(math.radians(yaw))).normalize()
         # return position, direction
     

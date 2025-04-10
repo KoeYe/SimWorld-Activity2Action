@@ -7,8 +7,10 @@ You have to use the provided functions to achieve the goal.
 USER_PROMPT = """
 You are now at {position} in a city, where the unit is cm. And you have a map of the city structured as a graph with nodes and edges:
 {map}
-You are given a plan from the user, you should parse the plan into a list of actions and a waypoint.
-Do not execute two actions in a row.
+You are given a plan from the user, you should parse the plan into a list of actions and a list of waypoints if necessary.
+The number of navigate actions should be equal to the number of waypoints.
 The plan is:
-Go to waypoint {waypoint}.
+First go to waypoint Vector(x=5000.0, y=1700.0).
+Then got to waypoint Vector(x=1700.0, y=-1700.0).
 """
+

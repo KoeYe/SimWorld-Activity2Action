@@ -13,11 +13,12 @@ class Action(Enum):
 
 class ActionSpace(BaseModel):
     actions: List[Action] 
-    waypoints: Waypoint
+    waypoints: List[Waypoint]
 
     def __str__(self):
         actions_str = ','.join(str(a) for a in self.actions)
-        return f"ActionSpace(actions=[{actions_str}], waypoints={self.waypoints})"
+        waypoints = ','.join(str(w) for w in self.waypoints)
+        return f"ActionSpace(actions=[{actions_str}], waypoints={waypoints})"
 
     def __repr__(self):
         return self.__str__()
