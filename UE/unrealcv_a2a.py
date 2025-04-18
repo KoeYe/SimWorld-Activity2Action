@@ -82,6 +82,6 @@ class UnrealCvA2A(UnrealCV):
             cmd = f'vbp {object_name} StopDeliveryMan'
             self.client.request(cmd)
 
-    def get_camera_observation(self, camera_id, viewmode='lit'):
+    def get_camera_observation(self, camera_id, viewmode='lit', mode='fast'):
         with self.lock:
-            return self.read_image(camera_id, viewmode, 'fast')
+            return self.read_image(camera_id, viewmode, mode)

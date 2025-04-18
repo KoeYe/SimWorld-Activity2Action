@@ -129,7 +129,7 @@ class A2Agent(object):
         if self.rule_based:
             self.navigate_rule_based(waypoint)
         else:
-            self.navigate_vision_based()
+            self.navigate_vision_based(waypoint)
         self.update_position_and_direction()
         
     def navigate_rule_based(self, waypoint: Vector):
@@ -144,11 +144,18 @@ class A2Agent(object):
             self.unrealcv_client.d_step_forward(self.name)
             self.update_position_and_direction()
             
-    def navigate_vision_based(self):
-        # while not self.walk_arrive_at_waypoint():
-        #     image = self.unrealcv_client.get_observation(self.camera_id, self.observation_viewmode)
-        #     function_call = self.model.function_calling(self.system_prompt, self.user_prompt, images=image, functions=self.functions, action_history=self.action_history, temperature=self.temperature)
-        pass
+    def navigate_vision_based(self, waypoint: Vector):
+        while not self.walk_arrive_at_waypoint(waypoint):
+            image = self.unrealcv_client.get_camera_observation(self.camera_id, self.observation_viewmode, mode='fast')
+            function_calls = self.model.function_calling(self.system_prompt, self.user_prompt, images=image, functions=self.functions, action_history=self.action_history, temperature=self.temperature)
+            for function_call in function_calls:
+                if function_call['name'] == 'forward':
+                    self.unrealcv_client.d_step_forward(self.name)
+                    self.update_position_and_direction()
+                elif function_call['name'] == 'rotate':
+                    self.unrealcv_client.d_rotate(self.name, function_call['arguments']['angle'], function_call['arguments']['direction'])
+                    self.update_position_and_direction()
+        
 
     def walk_arrive_at_waypoint(self, waypoint: Vector):
         if self.position.distance(waypoint) < Config.WALK_ARRIVE_WAYPOINT_DISTANCE:

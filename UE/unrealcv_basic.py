@@ -169,9 +169,14 @@ class UnrealCV(object):
             elif mode == 'file': # save image to file and read it
                 cmd = f'vget /camera/{cam_id}/{viewmode} {viewmode}{self.ip}.png'
                 img_dirs = self.client.request(cmd)
+                print(f"img_dirs type: {type(img_dirs)}")
+                print(f"img_dirs: {img_dirs}")
                 image = cv2.imread(img_dirs)
+                print(f"image type: {type(image)}")
+                print(f"image: {image}")
             elif mode == 'fast': # get image from unrealcv in bmp format
                 cmd = f'vget /camera/{cam_id}/{viewmode} bmp'
+                print(f"bmp: {self.client.request(cmd)}")
                 image = self.decode_bmp(self.client.request(cmd))
             return image
 

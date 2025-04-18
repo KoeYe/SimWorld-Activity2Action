@@ -1,0 +1,34 @@
+[
+{
+    "type": "function",
+    "function": {
+        "name": "forward",
+        "description": "Move the robot forward",
+        "strict": true
+    }
+},
+{
+    "type": "function",
+    "function": {
+        "name": "rotate",
+        "description": "Rotate the robot to a specified angle",
+        "parameters": {
+            "type": "object",
+            "properties": {
+                "direction": {
+                    "type": "string",
+                    "description": "The direction to rotate the robot",
+                    "enum": ["left", "right"]
+                },
+                "angle": {
+                    "type": "number",
+                    "description": "The angle to rotate the robot in degrees, should be 0-180"
+                }
+            },
+            "required": ["direction", "angle"],
+            "additionalProperties": false
+        },
+        "strict": true
+    }
+}
+]
